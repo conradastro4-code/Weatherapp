@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Windy Map</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"></script>
+    <script src="https://api.windy.com/assets/map-forecast/libBoot.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; }
+        #windy { height: 100%; }
+    </style>
+</head>
+<body>
+    <div id="windy"></div>
+    <script>
+        const options = {
+            key: 'DmhD3sSpofDwKxTh30jYNovUmKBuKF3J', // Your Map Forecast API key
+            lat: 40.7128, // Default latitude (New York)
+            lon: -74.0060, // Default longitude (New York)
+            zoom: 5,
+        };
+
+        windyInit(options, windyAPI => {
+            const { map, store } = windyAPI;
+        });
+    </script>
+</body>
+</html>

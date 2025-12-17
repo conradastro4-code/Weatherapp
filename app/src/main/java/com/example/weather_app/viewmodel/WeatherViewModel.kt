@@ -4,10 +4,12 @@ import android.app.Application
 import android.location.Geocoder
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.weather_app.data.DailyForecast
 import com.example.weather_app.data.HourlyForecast
 import com.example.weather_app.data.Temperature
 import com.example.weather_app.data.WeatherInfo
 import com.example.weather_app.data.toCelsius
+import com.example.weather_app.data.toDayString
 import com.example.weather_app.data.toFahrenheit
 import com.example.weather_app.data.toHourString
 import com.example.weather_app.network.WeatherApiService
@@ -26,6 +28,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import java.io.IOException
+import java.util.Calendar
 import java.util.Locale
 
 enum class TempUnit { C, F }
@@ -99,19 +102,28 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
         val humidity = (response["rh-surface"] as JsonArray).map { it.jsonPrimitive.double }
         val windU = (response["wind_u-surface"] as JsonArray).map { it.jsonPrimitive.double }
         val windV = (response["wind_v-surface"] as JsonArray).map { it.jsonPrimitive.double }
+        val ptype = (response["ptype-surface"] as JsonArray).map { it.jsonPrimitive.double.toInt() }
+        val lclouds = (response["lclouds-surface"] as JsonArray).map { it.jsonPrimitive.double }
+        val mclouds = (response["mclouds-surface"] as JsonArray).map { it.jsonPrimitive.double }
+        val hclouds = (response["hclouds-surface"] as JsonArray).map { it.jsonPrimitive.double }
 
         val currentWindSpeed = kotlin.math.sqrt(windU.first() * windU.first() + windV.first() * windV.first())
 
-        val forecast = timestamps.zip(tempsK).mapIndexed { index, (ts, tempK) ->
-            if (index > 0) { // Skip the current hour
-                HourlyForecast(
-                    time = ts.toHourString(),
-                    temp = Temperature(tempK.toCelsius(), tempK.toFahrenheit())
-                )
-            } else {
-                null
-            }
-        }.filterNotNull().take(8) // Take the next 8 hours
+        val hourlyForecasts = timestamps.zip(tempsK).zip(humidity).zip(ptype).zip(lclouds).zip(mclouds).zip(hclouds).map { (all, h) ->
+            val (all2, m) = all
+            val (all3, l) = all2
+            val (all4, p) = all3
+            val (tsAndTemp, hum) = all4
+            val (ts, tempK) = tsAndTemp
+            HourlyForecast(
+                time = ts.toHourString(),
+                temp = Temperature(tempK.toCelsius(), tempK.toFahrenheit()),
+                humidity = "${hum.toInt()}%",
+                condition = getWeatherCondition(p, l, m, h)
+            )
+        }
+
+        val dailyForecasts = groupHourlyForecastsByDay(hourlyForecasts, timestamps).take(6)
 
         val currentTempK = tempsK.first()
         return WeatherInfo(
@@ -119,7 +131,40 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             currentTemp = Temperature(currentTempK.toCelsius(), currentTempK.toFahrenheit()),
             currentHumidity = "${humidity.first().toInt()}%",
             currentWindSpeed = "${currentWindSpeed.toInt()} m/s",
-            forecast = forecast
+            hourlyForecast = hourlyForecasts.take(9), // First 8 hours plus current
+            dailyForecast = dailyForecasts
         )
+    }
+
+    private fun groupHourlyForecastsByDay(
+        hourly: List<HourlyForecast>,
+        timestamps: List<Long>
+    ): List<DailyForecast> {
+        val cal = Calendar.getInstance()
+        return timestamps.zip(hourly)
+            .groupBy { (ts, _) ->
+                cal.timeInMillis = ts
+                cal.get(Calendar.DAY_OF_YEAR)
+            }
+            .map { (_, entries) ->
+                val day = entries.first().first.toDayString()
+                val highs = entries.map { it.second.temp.celsius }
+                val lows = entries.map { it.second.temp.celsius }
+                val conditions = entries.map { it.second.condition }
+                DailyForecast(
+                    day = day,
+                    highTemp = Temperature(highs.maxOrNull() ?: 0.0, (highs.maxOrNull() ?: 0.0).toFahrenheit()),
+                    lowTemp = Temperature(lows.minOrNull() ?: 0.0, (lows.minOrNull() ?: 0.0).toFahrenheit()),
+                    condition = conditions.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: ""
+                )
+            }
+    }
+
+    private fun getWeatherCondition(ptype: Int, lclouds: Double, mclouds: Double, hclouds: Double): String {
+        return when {
+            ptype > 0 -> "🌧️"
+            lclouds > 50 || mclouds > 50 || hclouds > 50 -> "☁️"
+            else -> "☀️"
+        }
     }
 }

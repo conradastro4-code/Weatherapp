@@ -9,12 +9,22 @@ data class WeatherInfo(
     val currentTemp: Temperature,
     val currentHumidity: String,
     val currentWindSpeed: String,
-    val forecast: List<HourlyForecast>
+    val hourlyForecast: List<HourlyForecast>,
+    val dailyForecast: List<DailyForecast>
 )
 
 data class HourlyForecast(
     val time: String,
-    val temp: Temperature
+    val temp: Temperature,
+    val humidity: String,
+    val condition: String
+)
+
+data class DailyForecast(
+    val day: String,
+    val highTemp: Temperature,
+    val lowTemp: Temperature,
+    val condition: String
 )
 
 data class Temperature(val celsius: Double, val fahrenheit: Double)
@@ -26,5 +36,11 @@ fun Double.toFahrenheit(): Double = this * 9 / 5 - 459.67
 fun Long.toHourString(): String {
     val date = Date(this)
     val format = SimpleDateFormat("ha", Locale.getDefault())
+    return format.format(date).lowercase()
+}
+
+fun Long.toDayString(): String {
+    val date = Date(this)
+    val format = SimpleDateFormat("EEEE", Locale.getDefault())
     return format.format(date)
 }

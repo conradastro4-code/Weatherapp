@@ -6,23 +6,37 @@
     <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"></script>
     <script src="https://api.windy.com/assets/map-forecast/libBoot.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; }
-        #windy { height: 100%; }
+        html, body { height: 100%; margin: 0; padding: 0; }
+        #windy { width: 100vw; height: 100vh; }
+        #fallback { display: none; color: red; text-align: center; margin-top: 20px; }
     </style>
 </head>
 <body>
-    <div id="windy"></div>
-    <script>
-        const options = {
-            key: 'DmhD3sSpofDwKxTh30jYNovUmKBuKF3J', // Your Map Forecast API key
-            lat: 40.7128, // Default latitude (New York)
-            lon: -74.0060, // Default longitude (New York)
-            zoom: 5,
-        };
+<div id="windy"></div>
+<div id="fallback">Map failed to load. Please check your internet connection and API key.</div>
+<script>
+    function showFallback() {
+        document.getElementById('windy').style.display = 'none';
+        document.getElementById('fallback').style.display = 'block';
+    }
 
-        windyInit(options, windyAPI => {
-            const { map, store } = windyAPI;
-        });
-    </script>
+    try {
+        const options = {
+            key: 'DmhD3sSpofDwKxTh30jYNovUmKBuKF3J',
+            lat: 13.4167, // Calapan City
+            lon: 121.1833, // Calapan City
+            zoom: 8,
+        };
+        if (typeof windyInit === 'function') {
+            windyInit(options, windyAPI => {
+                // Map initialized
+            });
+        } else {
+            showFallback();
+        }
+    } catch (e) {
+        showFallback();
+    }
+</script>
 </body>
 </html>

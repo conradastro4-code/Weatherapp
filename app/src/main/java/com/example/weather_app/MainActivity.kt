@@ -4,6 +4,8 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -23,7 +25,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -37,6 +38,7 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.weather_app.data.DailyForecast
 import com.example.weather_app.data.HourlyForecast
 import com.example.weather_app.ui.theme.Weather_AppTheme
 import com.example.weather_app.viewmodel.TempUnit
@@ -71,7 +73,7 @@ class MainActivity : ComponentActivity() {
                     composable("weather") {
                         WeatherScreen(
                             weatherViewModel = weatherViewModel,
-                            onFetchWeatherClick = { this@MainActivity.requestLocationAndWeather() },
+                            onFetchWeatherClick = ::requestLocationAndWeather,
                             onGoToMapClick = { navController.navigate("map") }
                         )
                     }
@@ -152,9 +154,14 @@ fun WeatherScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("Hourly Forecast:")
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(weatherInfo.forecast) { forecast ->
-                            ForecastItem(forecast, unit)
+                        items(weatherInfo.hourlyForecast) { forecast ->
+                            HourlyForecastItem(forecast, unit)
                         }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Daily Forecast:")
+                    weatherInfo.dailyForecast.forEach { forecast ->
+                        DailyForecastItem(forecast, unit)
                     }
                 }
             }
@@ -171,10 +178,22 @@ fun WeatherScreen(
 }
 
 @Composable
-fun ForecastItem(forecast: HourlyForecast, unit: TempUnit) {
+fun HourlyForecastItem(forecast: HourlyForecast, unit: TempUnit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(forecast.time)
+        Text(forecast.condition)
         Text("${if (unit == TempUnit.C) forecast.temp.celsius.toInt() else forecast.temp.fahrenheit.toInt()}°${unit.name}")
+        Text(forecast.humidity)
+    }
+}
+
+@Composable
+fun DailyForecastItem(forecast: DailyForecast, unit: TempUnit) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(forecast.day)
+        Text(forecast.condition)
+        Text("High: ${if (unit == TempUnit.C) forecast.highTemp.celsius.toInt() else forecast.highTemp.fahrenheit.toInt()}°${unit.name}")
+        Text("Low: ${if (unit == TempUnit.C) forecast.lowTemp.celsius.toInt() else forecast.lowTemp.fahrenheit.toInt()}°${unit.name}")
     }
 }
 
@@ -184,12 +203,19 @@ fun MapScreen(navController: NavController) {
         Button(onClick = { navController.popBackStack() }) {
             Text("Back to Weather")
         }
-        AndroidView(factory = {
-            WebView(it).apply {
-                webViewClient = WebViewClient()
-                settings.javaScriptEnabled = true
-                loadUrl("file:///android_asset/windy_map.html")
+        AndroidView(
+            modifier = Modifier.weight(1f),
+            factory = { context ->
+                WebView(context).apply {
+                    webViewClient = WebViewClient()
+                    webChromeClient = WebChromeClient()
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.allowUniversalAccessFromFileURLs = true // The definitive fix
+
+                    loadUrl("file:///android_asset/windy_map.html")
+                }
             }
-        })
+        )
     }
 }

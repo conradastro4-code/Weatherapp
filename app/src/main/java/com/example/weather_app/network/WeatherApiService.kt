@@ -15,7 +15,7 @@ data class WindyRequest(
     val lat: Double,
     val lon: Double,
     val model: String = "gfs",
-    val parameters: List<String> = listOf("temp", "rh", "wind"),
+    val parameters: List<String> = listOf("temp", "rh", "wind", "ptype", "lclouds", "mclouds", "hclouds"),
     val levels: List<String> = listOf("surface"),
     val key: String
 )

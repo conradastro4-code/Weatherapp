@@ -4,10 +4,13 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
+import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
-import android.webkit.WebSettings
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -38,6 +42,8 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewClientCompat
 import com.example.weather_app.data.DailyForecast
 import com.example.weather_app.data.HourlyForecast
 import com.example.weather_app.ui.theme.Weather_AppTheme
@@ -45,9 +51,12 @@ import com.example.weather_app.viewmodel.TempUnit
 import com.example.weather_app.viewmodel.WeatherUiState
 import com.example.weather_app.viewmodel.WeatherViewModel
 import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
+import okhttp3.OkHttpClient
+import java.io.ByteArrayInputStream
+import java.util.HashMap
 
 class MainActivity : ComponentActivity() {
 
@@ -58,7 +67,12 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
+            Log.d("WeatherDebug", "Location permission granted")
+            Toast.makeText(this, "Location permission granted", Toast.LENGTH_SHORT).show()
             fetchLocationAndWeather()
+        } else {
+            Log.d("WeatherDebug", "Location permission denied")
+            Toast.makeText(this, "Location permission denied", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -90,8 +104,12 @@ class MainActivity : ComponentActivity() {
                 this,
                 Manifest.permission.ACCESS_COARSE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED) {
+            Log.d("WeatherDebug", "Permission already granted, fetching location/weather")
+            Toast.makeText(this, "Fetching location and weather...", Toast.LENGTH_SHORT).show()
             fetchLocationAndWeather()
         } else {
+            Log.d("WeatherDebug", "Requesting location permission")
+            Toast.makeText(this, "Requesting location permission...", Toast.LENGTH_SHORT).show()
             locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
     }
@@ -99,17 +117,35 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("MissingPermission")
     private fun fetchLocationAndWeather() {
         val cancellationTokenSource = CancellationTokenSource()
+        Log.d("WeatherDebug", "Attempting to get current location...")
+        Toast.makeText(this, "Getting current location...", Toast.LENGTH_SHORT).show()
         fusedLocationClient.getCurrentLocation(
-            LocationRequest.PRIORITY_HIGH_ACCURACY,
+            Priority.PRIORITY_HIGH_ACCURACY,
             cancellationTokenSource.token
         ).addOnSuccessListener { location ->
-            location?.let {
+            if (location != null) {
+                Log.d("WeatherDebug", "Location received: ${location.latitude}, ${location.longitude}")
+                Toast.makeText(this, "Location: ${location.latitude}, ${location.longitude}", Toast.LENGTH_SHORT).show()
                 weatherViewModel.fetchWeather(
                     "ZbrU8HlwEk98pfIg4szMl3FQsfkwCkVs",
-                    it.latitude,
-                    it.longitude
+                    location.latitude,
+                    location.longitude
+                )
+            } else {
+                // Fallback: Use a default location (e.g., New York City)
+                val fallbackLat = 40.7128
+                val fallbackLon = -74.0060
+                Log.d("WeatherDebug", "Location is null! Using fallback: $fallbackLat, $fallbackLon")
+                Toast.makeText(this, "Failed to get location. Using fallback: $fallbackLat, $fallbackLon", Toast.LENGTH_LONG).show()
+                weatherViewModel.fetchWeather(
+                    "ZbrU8HlwEk98pfIg4szMl3FQsfkwCkVs",
+                    fallbackLat,
+                    fallbackLon
                 )
             }
+        }.addOnFailureListener { e ->
+            Log.e("WeatherDebug", "Failed to get location", e)
+            Toast.makeText(this, "Error getting location: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -191,7 +227,6 @@ fun HourlyForecastItem(forecast: HourlyForecast, unit: TempUnit) {
 fun DailyForecastItem(forecast: DailyForecast, unit: TempUnit) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(forecast.day)
-        Text(forecast.condition)
         Text("High: ${if (unit == TempUnit.C) forecast.highTemp.celsius.toInt() else forecast.highTemp.fahrenheit.toInt()}°${unit.name}")
         Text("Low: ${if (unit == TempUnit.C) forecast.lowTemp.celsius.toInt() else forecast.lowTemp.fahrenheit.toInt()}°${unit.name}")
     }
@@ -199,6 +234,23 @@ fun DailyForecastItem(forecast: DailyForecast, unit: TempUnit) {
 
 @Composable
 fun MapScreen(navController: NavController) {
+    val okHttpClient = remember { OkHttpClient() }
+
+    fun getReasonPhrase(code: Int): String {
+        return when (code) {
+            200 -> "OK"
+            201 -> "Created"
+            202 -> "Accepted"
+            204 -> "No Content"
+            400 -> "Bad Request"
+            401 -> "Unauthorized"
+            403 -> "Forbidden"
+            404 -> "Not Found"
+            500 -> "Internal Server Error"
+            else -> "OK"
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Button(onClick = { navController.popBackStack() }) {
             Text("Back to Weather")
@@ -206,14 +258,82 @@ fun MapScreen(navController: NavController) {
         AndroidView(
             modifier = Modifier.weight(1f),
             factory = { context ->
+                val assetLoader = WebViewAssetLoader.Builder()
+                    .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
+                    .build()
                 WebView(context).apply {
-                    webViewClient = WebViewClient()
-                    webChromeClient = WebChromeClient()
+                    webViewClient = object : WebViewClientCompat() {
+                        override fun shouldInterceptRequest(
+                            view: WebView,
+                            request: WebResourceRequest
+                        ): WebResourceResponse? {
+                            val url = request.url
+
+                            if (request.method == "OPTIONS" && url.host?.contains("windy.com") == true) {
+                                val headers = HashMap<String, String>()
+                                headers["Access-Control-Allow-Origin"] = "https://appassets.androidplatform.net"
+                                headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+                                headers["Access-Control-Allow-Headers"] = "Content-Type, X-Requested-With, windy-auth-token"
+                                return WebResourceResponse("text/plain", "UTF-8", 204, "No Content", headers, ByteArrayInputStream(ByteArray(0)))
+                            }
+
+                            if (url.host?.contains("windy.com") == true) {
+                                try {
+                                    val okHttpRequest = okhttp3.Request.Builder().url(url.toString())
+                                        .apply {
+                                            request.requestHeaders.forEach { (key, value) ->
+                                                header(key, value)
+                                            }
+                                        }
+                                        .build()
+
+                                    val response = okHttpClient.newCall(okHttpRequest).execute()
+
+                                    val mimeType = response.header("content-type", "text/plain") ?: "text/plain"
+                                    val encoding = response.header("content-encoding", "UTF-8") ?: "UTF-8"
+                                    val reason = response.message.ifBlank { getReasonPhrase(response.code) }
+                                    val stream = response.body?.byteStream() ?: ByteArrayInputStream(ByteArray(0))
+
+                                    val responseHeaders = response.headers.toMultimap()
+                                        .toMutableMap()
+                                        .apply {
+                                            this["Access-Control-Allow-Origin"] = mutableListOf("https://appassets.androidplatform.net")
+                                        }
+
+                                    val mappedHeaders = responseHeaders.mapValues { it.value.joinToString() }
+
+                                    return WebResourceResponse(
+                                        mimeType,
+                                        encoding,
+                                        response.code,
+                                        reason,
+                                        mappedHeaders,
+                                        stream
+                                    )
+                                } catch (e: Exception) {
+                                    Log.e("WebViewProxy", "Failed to proxy request: $url", e)
+                                    return null
+                                }
+                            }
+
+                            if (url.host == "appassets.androidplatform.net") {
+                                return assetLoader.shouldInterceptRequest(url)
+                            }
+
+                            return super.shouldInterceptRequest(view, request)
+                        }
+                    }
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                            consoleMessage?.let {
+                                Log.d("WebViewConsole", "${it.message()} -- From line ${it.lineNumber()} of ${it.sourceId()}")
+                            }
+                            return true
+                        }
+                    }
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-                    settings.allowUniversalAccessFromFileURLs = true // The definitive fix
-
-                    loadUrl("file:///android_asset/windy_map.html")
+                    loadUrl("https://appassets.androidplatform.net/assets/windy_map.html")
                 }
             }
         )

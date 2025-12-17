@@ -148,13 +148,16 @@ class WeatherViewModel(application: Application) : AndroidViewModel(application)
             }
             .map { (_, entries) ->
                 val day = entries.first().first.toDayString()
-                val highs = entries.map { it.second.temp.celsius }
-                val lows = entries.map { it.second.temp.celsius }
+                val cTemps = entries.map { it.second.temp.celsius }
+                val highC = cTemps.maxOrNull() ?: 0.0
+                val lowC = cTemps.minOrNull() ?: 0.0
+                val highF = highC * 9 / 5 + 32
+                val lowF = lowC * 9 / 5 + 32
                 val conditions = entries.map { it.second.condition }
                 DailyForecast(
                     day = day,
-                    highTemp = Temperature(highs.maxOrNull() ?: 0.0, (highs.maxOrNull() ?: 0.0).toFahrenheit()),
-                    lowTemp = Temperature(lows.minOrNull() ?: 0.0, (lows.minOrNull() ?: 0.0).toFahrenheit()),
+                    highTemp = Temperature(highC, highF),
+                    lowTemp = Temperature(lowC, lowF),
                     condition = conditions.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: ""
                 )
             }

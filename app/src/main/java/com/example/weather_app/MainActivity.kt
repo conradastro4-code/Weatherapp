@@ -57,6 +57,8 @@ import com.google.android.gms.tasks.CancellationTokenSource
 import okhttp3.OkHttpClient
 import java.io.ByteArrayInputStream
 import java.util.HashMap
+import androidx.compose.ui.graphics.Color 
+
 
 class MainActivity : ComponentActivity() {
 
@@ -159,16 +161,33 @@ fun WeatherScreen(
 ) {
     val weatherState by weatherViewModel.weatherState.collectAsState()
 
-    Column(modifier = modifier.padding(16.dp)) {
-        Row {
+     Column(modifier = modifier
+        .fillMaxSize()
+        .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center) {
+
+
+        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+
+            //---Title---
+            Text(
+                text = "Weather App",
+                style = androidx.compose.material3.MaterialTheme.typography.headlineLarge
+            )
+            // Title Spacing for vertical distance
+            Spacer(modifier = Modifier.height(32.dp))
+
+            //---Button of the weather (fetch weather & map button)---
             Button(onClick = onFetchWeatherClick) {
                 Text("Fetch Weather")
             }
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.padding(horizontal = 8.dp))
             Button(onClick = onGoToMapClick) {
                 Text("Map")
             }
         }
+        
         Spacer(modifier = Modifier.height(16.dp))
         when (val state = weatherState) {
             is WeatherUiState.Empty -> {
